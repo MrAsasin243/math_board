@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101214">
+<title>Математическая доска</title>
+<style>
+:root{
+  --bg:#101214;--panel:#171a1d;--panel-2:#1d2125;--node:#1a1e22;--node-head:#20252a;
+  --ink:#e4e7e9;--muted:#90989f;--faint:#697178;--line:#343a40;--line-soft:#292f34;
+  --grid:rgba(183,193,201,.075);--focus:#c4cbd0;--focus-bg:#292f34;
+  --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  --ui:Inter,"Segoe UI",Arial,sans-serif;
+  --math:"Cambria Math","STIX Two Math","Latin Modern Math","Times New Roman",serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--ui)}
+button,input,textarea{font:inherit}
+button{border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:7px 10px;cursor:pointer;font-size:11px;white-space:nowrap;transition:background .12s,border-color .12s}
+button:hover{border-color:#69727a;background:#2a3035}
+button:active{background:#343b41}
+button:disabled{opacity:.35;cursor:not-allowed}
+button.primary{background:#d4d9dc;color:#111416;border-color:#d4d9dc}
+button.primary:hover{background:#fff;border-color:#fff}
+button.merge{border-color:#596168;color:#d5dade}
+button.danger{color:#cbd1d5}
+.app{height:100%;display:flex;flex-direction:column;background:var(--bg)}
+.topbar{height:52px;min-height:52px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;padding:0 14px;background:var(--panel);z-index:10}
+.brand{display:flex;align-items:center;gap:9px;white-space:nowrap;margin-right:16px}
+.brand-mark{width:24px;height:24px;display:grid;place-items:center;border:1px solid #626b72;color:#e8ecef;font:16px var(--math)}
+.brand strong{font:500 14px var(--ui);letter-spacing:.015em}
+.top-spacer{flex:1}
+.save-state{font:9px var(--mono);color:var(--muted);white-space:nowrap;margin:0 8px}
+.topbar button{height:30px;padding:5px 9px}
+.toolrow{height:46px;min-height:46px;display:flex;align-items:center;gap:6px;padding:0 14px;background:#14171a;border-bottom:1px solid var(--line);z-index:5;overflow-x:auto;scrollbar-width:thin}
+.toolbar-group{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.tool-sep{width:1px;height:22px;background:var(--line);margin:0 6px;flex-shrink:0}
+.tool-caption{font:9px var(--mono);color:var(--faint);margin:0 4px 0 1px;white-space:nowrap;letter-spacing:.06em}
+.template-strip{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.template-strip button{height:30px;min-width:34px;padding:4px 9px;font:italic 15px/1 var(--math);background:#1b1f23;border-color:#30373c}
+.template-strip button[data-template="ref{1}"]{font:10px var(--mono)}
+.tool-hint{display:none}
+.workspace{position:relative;display:flex;min-height:0;flex:1;background:var(--bg)}
+.viewport{position:relative;flex:1;min-width:0;overflow:hidden;cursor:grab;background-color:#111416;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:30px 30px;background-position:0 0;touch-action:none}
+.viewport.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;width:5000px;height:5000px;transform-origin:0 0}
+#edgeLayer{position:absolute;inset:0;width:5000px;height:5000px;overflow:visible;pointer-events:none}
+#nodesLayer{position:absolute;inset:0;width:5000px;height:5000px}
+.node{position:absolute;width:390px;max-width:520px;min-height:100px;background:var(--node);border:1px solid #4a5259;display:flex;flex-direction:column;z-index:2;user-select:none;color:var(--ink)}
+.node.selected{outline:1px solid #c4cbd0;outline-offset:3px;border-color:#aab2b8}
+.node-head{height:36px;min-height:36px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;padding:0 10px;gap:9px;background:var(--node-head);cursor:move;font:12px/1 var(--mono);font-weight:500;color:#c1c9cf}
+.node-number{color:#f2f4f5;font-size:13px;font-weight:650;letter-spacing:.02em}
+.node-kind{flex:1;font:11px/1.1 var(--mono);font-weight:500;color:#c0c8ce;letter-spacing:.035em}
+.node-actions{display:flex;align-items:center;justify-content:center;gap:3px;height:100%}
+.node-action{border:0;background:transparent;padding:0;width:28px;height:28px;min-width:28px;display:inline-flex;align-items:center;justify-content:center;line-height:1;font:16px/1 var(--ui);color:#b9c2c8;position:relative}
+.node-action:hover{color:#fff;background:#30383e;border:0}
+.node-action.delete-node{font-size:0}
+.node-action.delete-node::before,.node-action.delete-node::after,.icon-close::before,.icon-close::after{content:"";position:absolute;width:13px;height:1.6px;background:currentColor;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);border-radius:1px}
+.node-action.delete-node::after,.icon-close::after{transform:translate(-50%,-50%) rotate(-45deg)}
+.icon-close{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0!important;line-height:0;font-size:0!important}
+.math-content{padding:20px 18px 18px;min-height:76px;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;cursor:text;min-width:0}
+.math{font:italic 27px/1.55 var(--math);color:#edf0f2;white-space:nowrap;display:inline-block;max-width:none;overflow:visible;font-kerning:normal;font-variant-ligatures:common-ligatures}
+.math-sequence{width:100%;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:0}
+.math-line{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;min-height:43px;padding:5px 0;position:relative;min-width:0}
+.math-line+.math-line{border-top:1px solid #30363b}
+.math-line .math{justify-self:center}
+.math-line-inner{min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#555e65 transparent;padding:3px 8px}
+.part-number{font:10px var(--mono);color:#a0aab1;grid-column:1;justify-self:start}
+.math sup,.math sub{font-size:.62em;line-height:0;position:static;vertical-align:super}
+.math sub{vertical-align:sub}
+.math .large-op{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;vertical-align:middle;position:relative;margin:0 .08em;line-height:1;white-space:nowrap;font-style:normal}
+.math .operator-glyph{font:normal 1.12em/.88 var(--math);display:block;padding:0 .015em}
+.math .operator-glyph.lim-glyph{font:normal .72em/1 var(--math);letter-spacing:-.04em}
+.math .operator-limits{display:flex;flex-direction:column;align-items:center;justify-content:center;font:italic .39em/1.12 var(--math);white-space:nowrap;max-width:130px}
+.math .operator-limits:empty{display:none}
+.math .op-upper,.math .op-lower{display:block;white-space:nowrap}
+.math .op-upper:empty,.math .op-lower:empty{display:none}
+.math .fraction{display:inline-flex;vertical-align:middle;flex-direction:column;align-items:stretch;text-align:center;font-size:.82em;line-height:1.08;margin:0 .13em;white-space:nowrap}
+.math .fraction .numerator{padding:0 .2em .1em;border-bottom:1.25px solid currentColor}
+.math .fraction .denominator{padding:.1em .2em 0}
+.math .fraction.derivative{font-size:.78em}
+.math .radical{display:inline-flex;align-items:stretch;vertical-align:middle;margin:0 .06em;white-space:nowrap}
+.math .radical-sign{font-style:normal;font-size:1.4em;line-height:.95;align-self:center}
+.math .radicand{border-top:1.25px solid currentColor;padding:.025em .13em 0;margin-top:.1em}
+.math .root-index{font-size:.55em;align-self:flex-start;margin-right:-.03em;transform:translateY(.15em)}
+.math .fenced{display:inline-flex;align-items:stretch;vertical-align:middle;margin:0 .08em}
+.math .fence{font:normal 1.35em/.95 var(--math);align-self:stretch;display:inline-flex;align-items:center}
+.math .fence-content{padding:0 .08em}
+.math .matrix-wrap{display:inline-flex;align-items:stretch;vertical-align:middle;margin:0 .12em;white-space:nowrap}
+.math .matrix-bracket{font:normal 2.05em/.82 var(--math);align-self:stretch;display:flex;align-items:center}
+.math table{border-collapse:collapse;font:normal .72em/1.25 var(--math);margin:0 .09em}
+.math td{padding:.04em .32em;min-width:1.15em;text-align:center}
+.math .matrix-name{font-style:italic}
+.math .matrix-dimension{font-size:.53em;vertical-align:sub;white-space:nowrap;margin-left:.02em}
+.math .upright{font-style:normal;font-size:.78em}
+.math .math-ref{font:normal .5em var(--mono);color:#c9d0d4;text-decoration:underline;text-decoration-style:dotted;cursor:pointer;vertical-align:super;margin:0 .05em}
+.math .math-ref:hover{background:#3b444b}
+.math-editor{width:100%;min-height:106px;resize:vertical;border:1px solid #59636b;outline:0;background:#111518;padding:11px 12px;color:#f0f2f3;font:13px/1.65 var(--mono);user-select:text;caret-color:#f3f5f6}
+.math-editor:focus{border-color:#b2bbc1}
+.node-foot{border-top:1px solid var(--line-soft);padding:7px 10px;display:flex;justify-content:flex-end;gap:14px;color:#929da5;font:10px/1.2 var(--mono);letter-spacing:.025em}
+.port{position:absolute;width:9px;height:9px;border:1px solid #8d989f;background:#1c2226;border-radius:50%;top:50%;transform:translateY(-50%);z-index:5;cursor:crosshair}
+.port:hover,.port.connecting{background:#e4e8ea;border-color:#e4e8ea}
+.port-in{left:-5px}.port-out{right:-5px}
+.edge-path{fill:none;stroke:#87929a;stroke-width:1.6;pointer-events:stroke;cursor:pointer}
+.edge-path.necessary{stroke-dasharray:5 4}
+.edge-path.iff{stroke-width:2.3}
+.edge-path.active{stroke:#e4e8ea;stroke-width:2.6}
+.edge-label-bg{fill:#171c20;stroke:#4b555d;stroke-width:1;pointer-events:all;cursor:pointer}
+.edge-label-text{font:9px var(--mono);fill:#d0d6da;pointer-events:all;cursor:pointer}
+.temp-edge{stroke:#dce1e4;stroke-width:1.8;stroke-dasharray:5 5;fill:none}
+#edgeLayer .edge-hit{stroke:transparent;stroke-width:14;fill:none;pointer-events:stroke;cursor:pointer}
+.empty-hint{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);text-align:center;color:#667078;pointer-events:none}
+.empty-hint strong{display:block;font:italic 38px var(--math);font-weight:400;color:#9ba4aa;margin-bottom:12px}
+.empty-hint p{font:10px var(--mono);letter-spacing:.07em;color:#707a82;margin:0;text-transform:uppercase}
+.code-panel{width:410px;min-width:320px;max-width:46vw;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;z-index:4}
+.code-panel.hidden{display:none}
+.panel-head{height:44px;min-height:44px;border-bottom:1px solid var(--line);padding:0 12px;display:flex;align-items:center;gap:8px}
+.panel-head strong{font:500 12px var(--ui);letter-spacing:.03em}
+.panel-head .top-spacer{flex:1}
+.code-tabs{display:flex;border-bottom:1px solid var(--line);padding:7px 9px;gap:5px}
+.code-tabs button{flex:1}
+.code-tabs button.active{background:#cbd2d7;color:#111517;border-color:#cbd2d7}
+.code-toolbar{display:flex;gap:6px;padding:8px 9px;border-bottom:1px solid var(--line)}
+.code-output{flex:1;min-height:0;width:100%;resize:none;border:0;outline:0;padding:14px;background:#111518;color:#dce1e4;font:11px/1.7 var(--mono);white-space:pre;overflow:auto;tab-size:2}
+.code-note{padding:8px 10px;border-top:1px solid var(--line);font:9px/1.5 var(--mono);color:var(--muted)}
+.statusbar{height:24px;min-height:24px;background:#15191c;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 11px;font:8px var(--mono);color:#778189;letter-spacing:.04em}
+.statusbar span{white-space:nowrap}.statusbar .right{margin-left:auto}
+.file-input{display:none}
+.toast{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:#d5dce0;color:#111518;padding:7px 12px;font:10px var(--mono);z-index:30;opacity:0;pointer-events:none;transition:opacity .15s}
+.toast.show{opacity:1}
+.object-drawer{position:absolute;top:10px;right:10px;bottom:10px;width:430px;max-width:calc(100vw - 24px);background:#1a1f23;border:1px solid #59636b;z-index:9;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateX(8px);transition:opacity .14s,transform .14s,visibility .14s}
+.object-drawer.open{opacity:1;visibility:visible;transform:translateX(0)}
+.drawer-head{height:56px;min-height:56px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.drawer-head strong{font:600 16px var(--ui);flex:1;color:#f0f2f3}
+.drawer-head span{font:10px var(--mono);color:#b1bac0}
+.drawer-head button{width:36px;height:36px;min-width:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;line-height:0}
+.drawer-search{padding:12px;border-bottom:1px solid var(--line)}
+.drawer-search input{width:100%;height:42px;border:1px solid #59636b;outline:none;background:#111518;color:var(--ink);padding:0 13px;font:14px var(--ui)}
+.drawer-search input::placeholder{color:#a1abb2;opacity:1}
+.drawer-search input:focus{border-color:#c0c8ce}
+.palette-list{overflow:auto;min-height:0;flex:1;padding:8px 12px 18px;scrollbar-width:thin;scrollbar-color:#69747c transparent}
+.palette-section{padding:13px 0 10px;border-bottom:1px solid #343c42}
+.palette-section h3{margin:0 0 10px;padding:0 2px;font:600 12px var(--ui);color:#c4cbd0;letter-spacing:.07em;text-transform:uppercase}
+.palette-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.palette-item{min-width:0;min-height:108px;padding:9px;background:#20262b;border-color:#4a555e;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:58px minmax(30px,auto);align-items:stretch;gap:8px;text-align:center;white-space:normal;overflow:hidden}
+.palette-item:hover{background:#2a3238;border-color:#85919a}
+.palette-preview{width:100%;height:58px;min-width:0;min-height:58px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#151a1e;border:1px solid #39434b;padding:4px 10px}
+.palette-symbol{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;padding:0 .45em;overflow:hidden;text-overflow:ellipsis;color:#f1f3f4;font:italic clamp(18px,1.7vw,24px)/1.15 var(--math);white-space:nowrap;text-align:center;letter-spacing:-.015em}
+.palette-matrix{display:grid;width:min(100%,118px);max-width:100%;box-sizing:border-box;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px 7px;align-items:center;justify-items:center;color:#f1f3f4;font:italic 18px/1.1 var(--math);padding:0 14px;position:relative;overflow:visible}
+.palette-matrix:before,.palette-matrix:after{content:"";position:absolute;top:-4px;bottom:-4px;width:5px;border-color:#e1e6e9;border-style:solid}
+.palette-matrix:before{left:5px;border-width:1.5px 0 1.5px 1.5px}
+.palette-matrix:after{right:5px;border-width:1.5px 1.5px 1.5px 0}
+.palette-label{display:flex;align-items:center;justify-content:center;min-width:0;min-height:30px;padding:6px 4px 0;border-top:1px solid #39434b;color:#e5e9eb;font:13px/1.35 var(--ui);overflow-wrap:anywhere;text-align:center}
+.palette-empty{padding:22px 8px;color:#d0d6da;font:14px var(--ui)}
+@media(max-width:1000px){.brand{margin-right:5px}.brand strong{font-size:13px}.save-state{display:none}.template-strip button{min-width:30px;padding:4px 7px}}
+@media(max-width:700px){.topbar{padding:0 7px;gap:4px}.brand{margin-right:2px}.brand strong{font-size:12px}.brand-mark{width:21px;height:21px}.topbar button{padding:5px 6px;font-size:10px}.toolrow{padding:0 7px}.node{width:320px}.math{font-size:23px}.object-drawer{right:6px;top:6px;bottom:6px;width:420px;max-width:calc(100vw - 12px)}.code-panel{position:absolute;right:0;top:0;bottom:0;width:min(94vw,410px);max-width:none}.statusbar{gap:8px}.statusbar span:nth-child(2){display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">∴</span><strong>Математическая доска</strong></div>
+    <button class="primary" id="addNodeBtn" title="Новый блок">＋</button>
+    <button class="merge" id="mergeBtn" disabled title="Объединить выбранные блоки">Объединить</button>
+    <button id="fitBtn" title="Вписать всё">Вписать</button>
+    <div class="top-spacer"></div>
+    <span class="save-state" id="saveState">● локально</span>
+    <button id="toggleCodeBtn">Код</button>
+    <button id="exportJsonBtn" title="Экспорт JSON">JSON ↓</button>
+    <button id="importJsonBtn" title="Импорт JSON">JSON ↑</button>
+    <input class="file-input" type="file" id="importFile" accept="application/json,.json">
+  </header>
+  <div class="toolrow">
+    <span class="tool-caption">ОБЪЕКТЫ</span>
+    <div class="template-strip" aria-label="Быстрый доступ к математическим объектам">
+      <button data-template="frac{a}{b}" title="Дробь">a⁄b</button>
+      <button data-template="sqrt{x}" title="Корень">√</button>
+      <button data-template="lim_{x->a}" title="Предел">lim</button>
+      <button data-template="sum_{k=1}^n" title="Сумма">∑</button>
+      <button data-template="prod_{k=1}^n" title="Произведение">∏</button>
+      <button data-template="int_a^b f dx" title="Интеграл">∫</button>
+      <button data-template="deriv{f}{x}" title="Производная">d⁄dx</button>
+      <button data-template="pderiv{f}{x}" title="Частная производная">∂</button>
+      <button data-template="mat[[a,b],[c,d]]" title="Матрица">▤</button>
+      <button data-template="ref{1}" title="Ссылка на блок">[n]</button>
+    </div>
+    <div class="tool-sep"></div>
+    <span class="tool-caption">✎ — ПОЛНЫЙ СПИСОК</span>
+  </div>
+  <main class="workspace">
+    <section class="viewport" id="viewport" aria-label="Бесконечная математическая доска">
+      <div class="world" id="world">
+        <svg id="edgeLayer" viewBox="0 0 5000 5000" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 z" fill="#87929a"/></marker>
+            <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 z" fill="#e4e8ea"/></marker>
+            <marker id="arrowStart" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M8,0 L0,4 L8,8 z" fill="#87929a"/></marker>
+          </defs>
+          <g id="edgesGroup"></g>
+          <path id="tempEdge" class="temp-edge" d="" style="display:none"/>
+        </svg>
+        <div id="nodesLayer"></div>
+      </div>
+      <div class="empty-hint" id="emptyHint"><strong>∴</strong><p>ДВОЙНОЙ ЩЕЛЧОК — НОВЫЙ БЛОК</p></div>
+    </section>
+    <aside class="code-panel hidden" id="codePanel">
+      <div class="panel-head"><strong>Код</strong><span class="top-spacer"></span><button id="closeCodeBtn" class="icon-close" aria-label="Закрыть панель"></button></div>
+      <div class="code-tabs"><button class="active" data-code-mode="lean">Lean 4</button><button data-code-mode="pseudo">Псевдокод</button></div>
+      <div class="code-toolbar"><button id="copyCodeBtn">Копировать</button><button id="downloadCodeBtn">Скачать .lean</button></div>
+      <textarea class="code-output" id="codeOutput" spellcheck="false" readonly></textarea>
+      <div class="code-note" id="codeNote">Каркас генерации. Математическая запись сохраняется в комментариях; компиляция и доказательство теорем не выполняются.</div>
+    </aside>
+    <aside class="object-drawer" id="objectDrawer" aria-label="Математические объекты">
+      <div class="drawer-head"><strong>Математические объекты</strong><span>ВСТАВКА</span><button id="closeDrawerBtn" class="icon-close" aria-label="Закрыть"></button></div>
+      <div class="drawer-search"><input id="paletteSearch" type="search" placeholder="Поиск объекта…" autocomplete="off"></div>
+      <div class="palette-list" id="paletteList"></div>
+    </aside>
+  </main>
+  <footer class="statusbar">
+    <span id="nodeCount">0 блоков</span><span id="edgeCount">0 связей</span><span id="zoomLabel">100%</span>
+    <span>SHIFT — ВЫБОР · CTRL + J — ОБЪЕДИНИТЬ · ПРОБЕЛ — ПАНОРАМА</span>
+    <span class="right">OFFLINE</span>
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+  'use strict';
+  const STORAGE_KEY = 'mathematical-proof-board-v2';
+  const LEGACY_STORAGE_KEY = 'light-math-terminal-board-v1';
+  const WORLD_SIZE = 5000;
+  const $ = (selector) => document.querySelector(selector);
+  const viewport = $('#viewport'), world = $('#world'), nodesLayer = $('#nodesLayer');
+  const edgesGroup = $('#edgesGroup'), tempEdge = $('#tempEdge'), emptyHint = $('#emptyHint');
+  const codePanel = $('#codePanel'), codeOutput = $('#codeOutput'), codeNote = $('#codeNote');
+  const state = {
+    nodes: [], edges: [], nextId: 1, nextEdgeId: 1,
+    panX: 0, panY: 0, zoom: 1, selected: null, selection: [], editing: null,
+    codeMode: 'lean', dragging: null, panning: null, connecting: null,
+    spaceDown: false, saveTimer: null, toastTimer: null
+  };
+
+  const escapeHTML = (value) => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const greek = {
+    alpha:'α', beta:'β', gamma:'γ', delta:'δ', epsilon:'ε', varepsilon:'ϵ', zeta:'ζ', eta:'η',
+    theta:'θ', vartheta:'ϑ', iota:'ι', kappa:'κ', lambda:'λ', mu:'μ', nu:'ν', xi:'ξ',
+    pi:'π', varpi:'ϖ', rho:'ρ', sigma:'σ', varsigma:'ς', tau:'τ', upsilon:'υ', phi:'φ',
+    varphi:'ϕ', chi:'χ', psi:'ψ', omega:'ω', Gamma:'Γ', Delta:'Δ', Theta:'Θ', Lambda:'Λ',
+    Xi:'Ξ', Pi:'Π', Sigma:'Σ', Phi:'Φ', Psi:'Ψ', Omega:'Ω', infty:'∞', infinity:'∞'
+  };
+  const symbols = [
+    ['<=>','⇔'],['<->','↔'],['=>','⇒'],['->','→'],['<-','←'],['<=','≤'],['>=','≥'],['!=','≠'],
+    ['==','='],['+-','±'],['-+','∓'],['xx','×'],['times','×'],['cdot','·'],['infty','∞'],
+    ['subseteq','⊆'],['supseteq','⊇'],['subset','⊂'],['supset','⊃'],['notin','∉'],['in','∈'],
+    ['union','∪'],['intersect','∩'],['forall','∀'],['exists','∃'],['emptyset','∅'],
+    ['and','∧'],['or','∨'],['implies','⇒'],['iff','⇔'],['to','→'],['approx','≈'],
+    ['equiv','≡'],['partial','∂'],['nabla','∇'],['degree','°'],['neq','≠'],['le','≤'],['leq','≤'],['ge','≥'],['geq','≥'],['toinfty','→∞'],['empty','∅']
+  ].sort((a,b)=>b[0].length-a[0].length);
+
+  function readGroup(source, start) {
+    if (source[start] !== '{') return {text: source[start] || '', end: Math.min(source.length, start + 1)};
+    let depth = 0;
+    for (let i = start; i < source.length; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}') {
+        depth--;
+        if (depth === 0) return {text: source.slice(start + 1, i), end: i + 1};
+      }
+    }
+    return {text: source.slice(start + 1), end: source.length};
+  }
+  function splitMatrixRows(raw) {
+    const rows = []; let current = '', depth = 0;
+    for (let i=0;i<raw.length;i++) {
+      const ch=raw[i];
+      if (ch==='{' || ch==='(') depth++;
+      if (ch==='}' || ch===')') depth--;
+      if (ch===']' && raw[i+1]===',' && depth===0) {
+        rows.push(current.replace(/^\s*\[/,'').trim()); current=''; i++; continue;
+      }
+      current += ch;
+    }
+    if (current) rows.push(current.replace(/^\s*\[/,'').replace(/\]\s*$/,'').trim());
+    return rows.map(row => {
+      let cells=[], cell='', d=0;
+      for (const ch of row) {
+        if (ch==='{' || ch==='(') d++;
+        if (ch==='}' || ch===')') d--;
+        if (ch===',' && d===0) { cells.push(cell); cell=''; } else cell+=ch;
+      }
+      cells.push(cell);
+      return cells;
+    });
+  }
+  function splitTopLevel(raw, separator=',') {
+    const out=[];let current='',depth=0;
+    for(let i=0;i<raw.length;i++){
+      const ch=raw[i];
+      if(ch==='{'||ch==='('||ch==='[')depth++;
+      else if(ch==='}'||ch===')'||ch===']')depth--;
+      if(ch===separator&&depth===0){out.push(current.trim());current='';}else current+=ch;
+    }
+    if(current.trim())out.push(current.trim());
+    return out;
+  }
+  function balancedEnd(source,start,open,close) {
+    let depth=0;
+    for(let i=start;i<source.length;i++){
+      if(source[i]===open)depth++;
+      else if(source[i]===close){depth--;if(depth===0)return i;}
+    }
+    return -1;
+  }
+  function matrixRows(raw) {
+    const rows=[];let i=0;
+    while(i<raw.length){
+      while(i<raw.length&&(raw[i]===','||/\s/.test(raw[i])))i++;
+      if(i>=raw.length)break;
+      if(raw[i]==='['){const end=balancedEnd(raw,i,'[',']');if(end<0)break;rows.push(splitTopLevel(raw.slice(i+1,end)));i=end+1;}
+      else {rows.push(splitTopLevel(raw.slice(i)));break;}
+    }
+    return rows;
+  }
+  function renderMatrix(raw) {
+    const rows=matrixRows(raw);
+    const table='<table>'+rows.map(row=>'<tr>'+row.map(cell=>'<td>'+renderMath(cell)+'</td>').join('')+'</tr>').join('')+'</table>';
+    return '<span class="matrix-wrap"><span class="matrix-bracket">(</span>'+table+'<span class="matrix-bracket">)</span></span>';
+  }
+  const uprightWords=new Set(['sin','cos','tan','cot','sec','csc','arcsin','arccos','arctan','sinh','cosh','tanh','ln','log','lg','exp','max','min','sup','inf','det','tr','rank','ker','dim','Re','Im','Pr','gcd','lcm']);
+  const greekLower={...greek};
+  function renderMath(input) {
+    const s=String(input??'');let out='',i=0;
+    const takeArg=(at)=>readGroup(s,at);
+    while(i<s.length){
+      const rest=s.slice(i);let m;
+      // Explicit matrices: mat[[a,b],[c,d]]
+      if(rest.startsWith('mat[[')){
+        const start=i+3,end=balancedEnd(s,start,'[',']');
+        if(end>=0){out+=renderMatrix(s.slice(start+1,end));i=end+1;continue;}
+      }
+      if((m=rest.match(/^(?:\\)?([A-Za-z][A-Za-z0-9]*):mat\(([^,()]+)\s*,\s*([^,()]+)\)/))){
+        out+='<span class="matrix-name">'+escapeHTML(m[1])+'</span><span class="matrix-dimension">'+renderMath(m[2].trim())+'×'+renderMath(m[3].trim())+'</span>';i+=m[0].length;continue;
+      }
+      // Fractions, derivatives and roots.
+      if((m=rest.match(/^(?:\\)?(frac|deriv|pderiv|root)\{/))){
+        const command=m[1],a=takeArg(i+m[0].length-1);
+        if(command==='frac'||command==='deriv'||command==='pderiv'||command==='root'){
+          const b=takeArg(a.end);
+          if(command==='frac')out+='<span class="fraction"><span class="numerator">'+renderMath(a.text)+'</span><span class="denominator">'+renderMath(b.text)+'</span></span>';
+          else if(command==='deriv'||command==='pderiv'){
+            const d=command==='pderiv'?'∂':'d';
+            out+='<span class="fraction derivative"><span class="numerator">'+d+renderMath(a.text)+'</span><span class="denominator">'+d+renderMath(b.text)+'</span></span>';
+          } else out+='<span class="radical"><span class="root-index">'+renderMath(a.text)+'</span><span class="radical-sign">√</span><span class="radicand">'+renderMath(b.text)+'</span></span>';
+          i=b.end;continue;
+        }
+      }
+      if((m=rest.match(/^(?:\\)?(sqrt|abs|norm|floor|ceil|vec|hat|bar|overline|underline|diag|det|tr|rank|ker|dim|Re|Im|Pr|max|min|sup|inf)\{/))){
+        const cmd=m[1],g=takeArg(i+m[0].length-1);const inner=renderMath(g.text);
+        if(cmd==='sqrt')out+='<span class="radical"><span class="radical-sign">√</span><span class="radicand">'+inner+'</span></span>';
+        else if(cmd==='abs'||cmd==='norm'||cmd==='floor'||cmd==='ceil'){
+          const l=cmd==='abs'?'|':cmd==='norm'?'‖':cmd==='floor'?'⌊':'⌈';const r=cmd==='abs'?'|':cmd==='norm'?'‖':cmd==='floor'?'⌋':'⌉';
+          out+='<span class="fenced"><span class="fence">'+l+'</span><span class="fence-content">'+inner+'</span><span class="fence">'+r+'</span></span>';
+        } else if(['vec','hat','bar','overline','underline'].includes(cmd)){
+          const deco=cmd==='vec'?'→':cmd==='hat'?'ˆ':cmd==='bar'?'¯':cmd==='underline'?'_':'¯';
+          out+='<span class="decorated" style="text-decoration:'+(cmd==='underline'?'underline':'none')+';border-top:'+(cmd==='bar'||cmd==='overline'?'1px solid currentColor':'0')+'">'+inner+(cmd==='vec'?'<sup>→</sup>':cmd==='hat'?'<sup>ˆ</sup>':'')+'</span>';
+        } else out+='<span class="upright">'+cmd+'</span>('+inner+')';
+        i=g.end;continue;
+      }
+      // Large operators keep their limits attached to the symbol.
+      if((m=rest.match(/^(?:\\)?(lim|sum|prod|int|oint|bigcup|bigcap|max|min|sup|inf)(?=_|\^|\b)/))){
+        const op=m[1];i+=m[0].length;let lower='',upper='';
+        while(s[i]==='_'||s[i]==='^'){
+          const kind=s[i++],g=readGroup(s,i);i=g.end;
+          if(kind==='_')lower=g.text;else upper=g.text;
+        }
+        const glyph={lim:'lim',sum:'∑',prod:'∏',int:'∫',oint:'∮',bigcup:'⋃',bigcap:'⋂',max:'max',min:'min',sup:'sup',inf:'inf'}[op];
+        const glyphClass=op==='lim'?'operator-glyph lim-glyph':'operator-glyph';
+        out+='<span class="large-op">'+(upper?'<span class="operator-limits"><span class="op-upper">'+renderMath(upper)+'</span></span>':'')+'<span class="'+glyphClass+'">'+glyph+'</span>'+(lower?'<span class="operator-limits"><span class="op-lower">'+renderMath(lower)+'</span></span>':'')+'</span>';
+        continue;
+      }
+      if(rest.startsWith('ref{')){
+        const g=takeArg(i+3),ref=String(g.text).trim(),target=findNodeForReference(ref);
+        const tip=target?nodeParts(target).join(' / '):'Блок не найден';
+        out+='<span class="math-ref" data-ref="'+escapeHTML(ref)+'" title="'+escapeHTML(tip)+'">['+escapeHTML(ref)+']</span>';i=g.end;continue;
+      }
+      // Subscripts and superscripts.
+      if(s[i]==='^'||s[i]==='_'){
+        const kind=s[i++],g=readGroup(s,i);i=g.end;
+        out+=kind==='^'?'<sup>'+renderMath(g.text)+'</sup>':'<sub>'+renderMath(g.text)+'</sub>';continue;
+      }
+      if(s[i]==='{'){const g=readGroup(s,i);out+=renderMath(g.text);i=g.end;continue;}
+      // Backslash aliases and symbolic words.
+      if(s[i]==='\\'){
+        const cmd=(rest.match(/^\\([A-Za-z]+)/)||[])[1];
+        if(cmd){if(greekLower[cmd])out+=escapeHTML(greekLower[cmd]);else{const alias=symbols.find(([token])=>token===cmd);out+=alias?escapeHTML(alias[1]):(uprightWords.has(cmd)?'<span class="upright">'+cmd+'</span>':escapeHTML(cmd));}i+=cmd.length+1;continue;}
+      }
+      let matched=false;
+      for(const [token,glyph] of symbols){
+        const wordToken=/^[A-Za-z]+$/.test(token);
+        const boundaryOK=!wordToken||(!/[A-Za-z]/.test(s[i-1]||'')&&!/[A-Za-z]/.test(s[i+token.length]||''));
+        if(rest.startsWith(token)&&boundaryOK){out+=escapeHTML(glyph);i+=token.length;matched=true;break;}
+      }
+      if(matched)continue;
+      if((m=rest.match(/^[A-Za-z]+/))){
+        const word=m[0];
+        if(greekLower[word])out+=escapeHTML(greekLower[word]);
+        else if(word==='ee')out+='e';
+        else if(uprightWords.has(word))out+='<span class="upright">'+escapeHTML(word)+'</span>';
+        else out+=escapeHTML(word);
+        i+=word.length;continue;
+      }
+      out+=s[i]==='\n'?' ':'<span>'+escapeHTML(s[i])+'</span>';i++;
+    }
+    return out;
+  }
+
+  function showToast(message) {
+    const el=$('#toast'); el.textContent=message; el.classList.add('show');
+    clearTimeout(state.toastTimer); state.toastTimer=setTimeout(()=>el.classList.remove('show'),1800);
+  }
+  function setTransform() {
+    const dpr=window.devicePixelRatio||1;
+    const tx=Math.round(state.panX*dpr)/dpr,ty=Math.round(state.panY*dpr)/dpr;
+    world.style.transform=`translate(${tx}px,${ty}px) scale(${state.zoom})`;
+    $('#zoomLabel').textContent=Math.round(state.zoom*100)+'%';
+    viewport.style.backgroundPosition=`${state.panX}px ${state.panY}px`;
+    viewport.style.backgroundSize=`${30*state.zoom}px ${30*state.zoom}px`;
+    positionObjectDrawer();
+  }
+  function screenToWorld(clientX,clientY) {
+    const rect=viewport.getBoundingClientRect();
+    return {x:(clientX-rect.left-state.panX)/state.zoom,y:(clientY-rect.top-state.panY)/state.zoom};
+  }
+  function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+  function updateStatus() {
+    $('#nodeCount').textContent=state.nodes.length+' блоков';
+    $('#edgeCount').textContent=state.edges.length+' связей';
+    emptyHint.style.display=state.nodes.length?'none':'block';
+    $('#saveState').textContent='● сохранено';
+    updateSelectionUI();
+  }
+  function scheduleSave() {
+    $('#saveState').textContent='● сохранение…'; clearTimeout(state.saveTimer);
+    state.saveTimer=setTimeout(()=>{
+      try {
+        const data=serializeBoard(); localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+        $('#saveState').textContent='● автосохранено';
+      } catch(e) { $('#saveState').textContent='! ошибка сохранения'; }
+    },250);
+  }
+  function serializeBoard() {
+    return {version:2,nodes:state.nodes.map(n=>({...n,parts:[...(n.parts||[])],aliases:[...(n.aliases||[])]})),edges:state.edges.map(e=>({...e})),nextId:state.nextId,nextEdgeId:state.nextEdgeId,view:{panX:state.panX,panY:state.panY,zoom:state.zoom}};
+  }
+  function loadBoard(data) {
+    if(!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error('Некорректный формат доски');
+    const ids=new Set();
+    const nodes=data.nodes.map(n=>{
+      const id=Number(n.id); if(!Number.isInteger(id)||id<1||ids.has(id)) throw new Error('Некорректные идентификаторы блоков'); ids.add(id);
+      return {id,x:Number(n.x)||0,y:Number(n.y)||0,expr:String(n.expr??'').trim()==='□'?'':String(n.expr??''),parts:Array.isArray(n.parts)?n.parts.map(v=>String(v).trim()==='□'?'':String(v)):[],aliases:Array.isArray(n.aliases)?[...new Set(n.aliases.map(Number).filter(v=>Number.isInteger(v)&&v>0&&v!==id))]:[]};
+    });
+    const edgeIds=new Set();
+    const edges=data.edges.map(e=>{
+      const id=Number(e.id); if(!Number.isInteger(id)||edgeIds.has(id)) throw new Error('Некорректные связи'); edgeIds.add(id);
+      const from=Number(e.from),to=Number(e.to),type=['sufficient','necessary','iff'].includes(e.type)?e.type:'sufficient';
+      if(!ids.has(from)||!ids.has(to)||from===to) throw new Error('Связь ссылается на отсутствующий блок');
+      return {id,from,to,type};
+    });
+    const aliasSet=new Set();
+    for(const node of nodes) for(const alias of node.aliases){if(ids.has(alias)||aliasSet.has(alias))throw new Error('Пересечение идентификаторов блоков и ссылок');aliasSet.add(alias);}
+    state.nodes=nodes; state.edges=edges;
+    state.nextId=Math.max(Number(data.nextId)||1,...nodes.map(n=>n.id+1),1);
+    state.nextEdgeId=Math.max(Number(data.nextEdgeId)||1,...edges.map(e=>e.id+1),1);
+    if(data.view){state.panX=Number(data.view.panX)||0;state.panY=Number(data.view.panY)||0;state.zoom=clamp(Number(data.view.zoom)||1,.25,2.5);}
+    state.selected=null;state.selection=[];state.editing=null;renderAll();setTransform();scheduleSave();
+  }
+  function renderAll() { renderNodes();renderEdges();updateStatus();refreshCode(); }
+  function nodeParts(node) {
+    return Array.isArray(node.parts) && node.parts.length ? node.parts : [String(node.expr ?? '')];
+  }
+  function nodeText(node) { return nodeParts(node).join('\n'); }
+  function findNodeForReference(reference) {
+    const id=Number(reference);
+    return state.nodes.find(n=>n.id===id||(Array.isArray(n.aliases)&&n.aliases.includes(id)));
+  }
+  function pluralRu(number, one, few, many) {
+    const n=Math.abs(number)%100,last=n%10;
+    if(n>=11&&n<=14)return many;
+    if(last===1)return one;
+    if(last>=2&&last<=4)return few;
+    return many;
+  }
+  function updateSelectionUI() {
+    const count=state.selection.length;
+    const button=$('#mergeBtn');
+    button.disabled=count<2;
+    button.textContent=count>1?`Объединить (${count})`:'Объединить (0)';
+  }
+  function setNodeSelection(id, additive=false) {
+    if(additive) {
+      const index=state.selection.indexOf(id);
+      if(index>=0) state.selection.splice(index,1); else state.selection.push(id);
+    } else if(!state.selection.includes(id) || state.selection.length<=1) {
+      state.selection=[id];
+    }
+    state.selected=state.selection.length?state.selection[state.selection.length-1]:null;
+    nodesLayer.querySelectorAll('.node').forEach(el=>el.classList.toggle('selected',state.selection.includes(Number(el.dataset.nodeId))));
+    updateSelectionUI();
+  }
+  function renderNodes() {
+    nodesLayer.innerHTML='';
+    for(const node of state.nodes) {
+      const parts=nodeParts(node);
+      const composite=parts.length>1;
+      const el=document.createElement('article'); el.className='node'+(state.selection.includes(node.id)?' selected':'');
+      el.dataset.nodeId=node.id;el.style.left=node.x+'px';el.style.top=node.y+'px';
+      const head=document.createElement('div');head.className='node-head';
+      head.innerHTML='<span class="node-number">['+node.id+']</span><span class="node-kind">'+(composite?parts.length+' ШАГА':'ВЫРАЖЕНИЕ')+'</span><div class="node-actions"><button class="node-action edit-node" title="Объекты и редактирование">✎</button><button class="node-action delete-node" title="Удалить" aria-label="Удалить блок"></button></div>';
+      const content=document.createElement('div');content.className='math-content';
+      if(state.editing===node.id) {
+        const area=document.createElement('textarea');area.className='math-editor';area.value=nodeText(node);area.spellcheck=false;area.setAttribute('aria-label','Математическая запись блока');
+        area.placeholder='Математическая запись…';
+        content.appendChild(area);
+        const foot=document.createElement('div');foot.className='node-foot';foot.innerHTML='<span>CTRL + ENTER — ГОТОВО</span><span>ESC — ОТМЕНА</span>';
+        el.append(head,content,foot);
+        area.addEventListener('keydown',ev=>{
+          if(ev.key==='Enter'&&(ev.ctrlKey||ev.metaKey)){ev.preventDefault();commitEdit(node.id,area.value);}
+          if(ev.key==='Escape'){ev.preventDefault();state.editing=null;closeObjectDrawer();renderNodes();}
+        });
+        area.addEventListener('blur',()=>{setTimeout(()=>{if(state.editing===node.id&&!$('#objectDrawer').contains(document.activeElement))commitEdit(node.id,area.value);},0);});
+        requestAnimationFrame(()=>{area.focus();area.setSelectionRange(area.value.length,area.value.length);});
+      } else {
+        const sequence=document.createElement('div');sequence.className='math-sequence';
+        sequence.innerHTML=parts.map((part,index)=>'<div class="math-line">'+(composite?'<span class="part-number">'+(index+1)+'</span>':'<span></span>')+'<div class="math-line-inner"><span class="math">'+renderMath(part)+'</span></div></div>').join('');
+        content.appendChild(sequence);
+        el.append(head,content);
+      }
+      const portIn=document.createElement('div');portIn.className='port port-in';portIn.title='Вход связи';portIn.dataset.nodeId=node.id;
+      const portOut=document.createElement('div');portOut.className='port port-out';portOut.title='Выход связи';portOut.dataset.nodeId=node.id;
+      el.append(portIn,portOut);nodesLayer.appendChild(el);
+      head.addEventListener('pointerdown',ev=>{
+        if(ev.target.closest('button')||state.editing===node.id)return;
+        ev.preventDefault();setNodeSelection(node.id,ev.shiftKey||ev.ctrlKey||ev.metaKey);
+        if(!state.selection.includes(node.id))return;
+        const p=screenToWorld(ev.clientX,ev.clientY);
+        state.dragging={ids:[...state.selection],offsets:state.selection.map(id=>{const n=state.nodes.find(x=>x.id===id);return {id,dx:p.x-n.x,dy:p.y-n.y};})};
+      });
+      content.addEventListener('pointerdown',ev=>{
+        if(ev.target.closest('.math-ref')||state.editing===node.id)return;
+        setNodeSelection(node.id,ev.shiftKey||ev.ctrlKey||ev.metaKey);
+      });
+      content.addEventListener('dblclick',ev=>{if(ev.target.closest('.math-ref'))return;ev.stopPropagation();beginEdit(node.id);});
+      head.querySelector('.edit-node').addEventListener('click',ev=>{ev.stopPropagation();beginEdit(node.id);});
+      head.querySelector('.delete-node').addEventListener('click',ev=>{ev.stopPropagation();deleteNode(node.id);});
+      content.querySelectorAll('.math-ref').forEach(ref=>ref.addEventListener('click',ev=>{
+        ev.stopPropagation();const id=Number(ref.dataset.ref);const target=findNodeForReference(id);
+        if(target){state.selected=target.id;state.selection=[target.id];renderNodes();updateSelectionUI();focusNode(target);}
+        else showToast('Блок ['+id+'] не найден');
+      }));
+      [portIn,portOut].forEach(port=>port.addEventListener('pointerdown',ev=>{
+        ev.stopPropagation();ev.preventDefault();setNodeSelection(node.id,false);state.connecting={from:node.id};port.classList.add('connecting');
+      }));
+    }
+    updateSelectionUI();
+  }
+  function positionObjectDrawer(){
+    const drawer=$('#objectDrawer');
+    if(!drawer||!drawer.classList.contains('open')||state.editing===null)return;
+    const nodeEl=nodesLayer.querySelector(`[data-node-id="${state.editing}"].node`);
+    if(!nodeEl)return;
+    const workspaceRect=$('.workspace').getBoundingClientRect();
+    const nodeRect=nodeEl.getBoundingClientRect();
+    const width=drawer.offsetWidth||300;
+    let left=nodeRect.right-workspaceRect.left+12;
+    if(left+width>workspaceRect.width-8)left=nodeRect.left-workspaceRect.left-width-12;
+    left=clamp(left,8,Math.max(8,workspaceRect.width-width-8));
+    const panelHeight=Math.min(drawer.offsetHeight||520,workspaceRect.height-16);
+    let top=nodeRect.top-workspaceRect.top;
+    top=clamp(top,8,Math.max(8,workspaceRect.height-panelHeight-8));
+    drawer.style.left=left+'px';drawer.style.right='auto';drawer.style.top=top+'px';
+  }
+  function closeObjectDrawer(){ $('#objectDrawer').classList.remove('open'); }
+  function commitEdit(id,value) {
+    const n=state.nodes.find(x=>x.id===id);
+    if(n) {
+      const parts=String(value).split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+      n.expr=parts[0]||'';n.parts=parts.length>1?parts:[];
+    }
+    state.editing=null;closeObjectDrawer();renderAll();scheduleSave();
+  }
+  function beginEdit(id) {state.selected=id;state.selection=[id];state.editing=id;$('#objectDrawer').classList.add('open');renderNodes();requestAnimationFrame(positionObjectDrawer);}
+  function deleteNode(id) {
+    state.nodes=state.nodes.filter(n=>n.id!==id);state.edges=state.edges.filter(e=>e.from!==id&&e.to!==id);
+    state.selection=state.selection.filter(v=>v!==id);state.selected=state.selection.at(-1)??null;
+    if(state.editing===id){state.editing=null;closeObjectDrawer();}
+    renderAll();scheduleSave();
+  }
+  function deleteSelection() {
+    if(!state.selection.length)return;
+    const ids=new Set(state.selection);
+    state.nodes=state.nodes.filter(n=>!ids.has(n.id));
+    state.edges=state.edges.filter(e=>!ids.has(e.from)&&!ids.has(e.to));
+    state.selection=[];state.selected=null;state.editing=null;closeObjectDrawer();
+    renderAll();scheduleSave();
+  }
+  function focusNode(node) {
+    const rect=viewport.getBoundingClientRect();
+    const el=nodesLayer.querySelector(`[data-node-id="${node.id}"].node`);
+    state.panX=rect.width/2-(node.x+(el?.offsetWidth||320)/2)*state.zoom;
+    state.panY=rect.height/2-(node.y+(el?.offsetHeight||110)/2)*state.zoom;
+    setTransform();scheduleSave();
+  }
+  function nodeAnchor(id,side) {
+    const node=state.nodes.find(n=>n.id===id);if(!node)return null;
+    const el=nodesLayer.querySelector(`[data-node-id="${id}"].node`);const w=el?el.offsetWidth:320,h=el?el.offsetHeight:110;
+    return {x:side==='out'?node.x+w:node.x,y:node.y+h/2};
+  }
+  const edgeTypeLabel={sufficient:'⇒',necessary:'⇐',iff:'⇔'};
+  function renderEdges() {
+    let markup='';
+    for(const edge of state.edges) {
+      const a=nodeAnchor(edge.from,'out'),b=nodeAnchor(edge.to,'in');if(!a||!b)continue;
+      const dx=Math.max(55,Math.abs(b.x-a.x)*.42),c1=a.x+dx,c2=b.x-dx;
+      const d=`M ${a.x} ${a.y} C ${c1} ${a.y}, ${c2} ${b.y}, ${b.x} ${b.y}`;
+      const active=edge.id===state.selectedEdge;
+      const markerEnd=edge.type==='necessary'?'':' marker-end="url(#arrow)"';
+      const markerStart=edge.type==='necessary'?' marker-start="url(#arrowStart)"':(edge.type==='iff'?' marker-start="url(#arrowStart)"':'');
+      const cls='edge-path '+edge.type+(active?' active':'');
+      const midX=(a.x+b.x)/2,midY=(a.y+b.y)/2-8,label=edgeTypeLabel[edge.type];
+      const width=label.length*6.1+14;
+      markup+=`<path class="edge-hit" data-edge-id="${edge.id}" d="${d}"/><path class="${cls}" data-edge-id="${edge.id}" d="${d}"${markerStart}${markerEnd}/>`;
+      if(edge.type==='iff') markup+=`<path d="${d}" fill="none" stroke="transparent" stroke-width="0.7"/>`;
+      markup+=`<g class="edge-label" data-edge-id="${edge.id}"><rect class="edge-label-bg" x="${midX-width/2}" y="${midY-11}" width="${width}" height="17"/><text class="edge-label-text" x="${midX}" y="${midY+1}" text-anchor="middle">${label}</text></g>`;
+    }
+    edgesGroup.innerHTML=markup;
+    edgesGroup.querySelectorAll('[data-edge-id]').forEach(el=>el.addEventListener('click',ev=>{
+      ev.stopPropagation();const id=Number(el.dataset.edgeId);const edge=state.edges.find(e=>e.id===id);if(!edge)return;
+      edge.type=edge.type==='sufficient'?'necessary':edge.type==='necessary'?'iff':'sufficient';state.selectedEdge=id;
+      renderEdges();refreshCode();scheduleSave();
+    }));
+  }
+  function createNode(x,y,expr='x = y',edit=true) {
+    const id=state.nextId++;state.nodes.push({id,x,y,expr,parts:[],aliases:[]});
+    state.selected=id;state.selection=[id];state.editing=edit?id:null;if(edit)$('#objectDrawer').classList.add('open');renderAll();requestAnimationFrame(positionObjectDrawer);scheduleSave();return id;
+  }
+  function createNodeNearCenter() {
+    const p=screenToWorld(viewport.getBoundingClientRect().left+viewport.clientWidth/2,viewport.getBoundingClientRect().top+viewport.clientHeight/2);
+    const index=state.nodes.length;
+    createNode(p.x-160+Math.floor(index/6)*340,p.y-55+(index%6)*138,'',true);
+  }
+  const paletteGroups=[
+    ['Основы',[['x','x','Переменная'],['a','a','Параметр'],['0','0','Ноль'],['1','1','Единица'],['pi','π','Пи'],['ee','e','Эйлер'],['i','i','Мнимая единица'],['infty','∞','Бесконечность'],['abs{x}','|x|','Модуль'],['norm{x}','‖x‖','Норма']]],
+    ['Операции',[['frac{a}{b}','a⁄b','Дробь'],['sqrt{x}','√x','Корень'],['root{n}{x}','ⁿ√x','Корень n-й степени'],['x^n','xⁿ','Степень'],['x_i','xᵢ','Индекс'],['(a+b)','( )','Скобки'],['cdot','·','Умножение'],['times','×','Умножение'],['+-','±','Плюс-минус'],['floor{x}','⌊x⌋','Пол'],['ceil{x}','⌈x⌉','Потолок']]],
+    ['Отношения',[['=','=','Равно'],['!=','≠','Не равно'],['<','<','Меньше'],['<=','≤','Меньше или равно'],['>','>','Больше'],['>=','≥','Больше или равно'],['approx','≈','Приблизительно'],['equiv','≡','Тождественно'],['=>','⇒','Следует'],['<=>','⇔','Эквивалентно']]],
+    ['Математический анализ',[['lim_{x->a}','lim','Предел'],['lim_{x->infty}','lim ∞','Предел на бесконечности'],['sum_{k=1}^n','∑','Сумма'],['prod_{k=1}^n','∏','Произведение'],['int_a^b f dx','∫','Интеграл'],['int_{-infty}^{infty} f dx','∫∞','Несобственный интеграл'],['oint_C f dz','∮','Контурный интеграл'],['deriv{f}{x}','d/dx','Производная'],['pderiv{f}{x}','∂/∂x','Частная производная'],['partial','∂','Частная'],['nabla','∇','Набла'],['infty','∞','Бесконечность']]],
+    ['Алгебра',[['A^{-1}','A⁻¹','Обратная матрица'],['A^T','Aᵀ','Транспонирование'],['det{A}','det A','Определитель'],['tr{A}','tr A','След'],['rank{A}','rank A','Ранг'],['ker{A}','ker A','Ядро'],['diag{a,b,c}','diag','Диагональная матрица'],['Re{z}','Re z','Действительная часть'],['Im{z}','Im z','Мнимая часть']]],
+    ['Матрицы',[['mat[[a,b],[c,d]]','(a b; c d)','Матрица 2×2'],['A:mat(2,3)','A₂×₃','Размер матрицы'],['I:mat(n,n)','Iₙ','Единичная'],['O:mat(m,n)','O','Нулевая'],['det{A}','det A','Определитель'],['diag{a,b,c}','diag','Диагональная']]],
+    ['Функции',[['sin(x)','sin','Синус'],['cos(x)','cos','Косинус'],['tan(x)','tan','Тангенс'],['ln(x)','ln','Натуральный логарифм'],['log_a{x}','log','Логарифм'],['exp(x)','exp','Экспонента'],['max{a,b}','max','Максимум'],['min{a,b}','min','Минимум']]],
+    ['Множества и логика',[['in','∈','Принадлежит'],['notin','∉','Не принадлежит'],['subseteq','⊆','Подмножество'],['union','∪','Объединение'],['intersect','∩','Пересечение'],['emptyset','∅','Пустое множество'],['forall','∀','Для всех'],['exists','∃','Существует'],['and','∧','И'],['or','∨','Или'],['implies','⇒','Импликация']]],
+    ['Греческие буквы',[['alpha','α','Альфа'],['beta','β','Бета'],['gamma','γ','Гамма'],['delta','δ','Дельта'],['epsilon','ε','Эпсилон'],['varepsilon','ϵ','Вариант эпсилон'],['zeta','ζ','Дзета'],['eta','η','Эта'],['theta','θ','Тета'],['vartheta','ϑ','Вариант тета'],['iota','ι','Йота'],['kappa','κ','Каппа'],['lambda','λ','Лямбда'],['xi','ξ','Кси'],['mu','μ','Мю'],['nu','ν','Ню'],['pi','π','Пи'],['rho','ρ','Ро'],['varpi','ϖ','Вариант пи'],['sigma','σ','Сигма'],['varsigma','ς','Конечная сигма'],['tau','τ','Тау'],['upsilon','υ','Ипсилон'],['phi','φ','Фи'],['varphi','ϕ','Вариант фи'],['chi','χ','Хи'],['psi','ψ','Пси'],['omega','ω','Омега'],['Gamma','Γ','Большая гамма'],['Delta','Δ','Большая дельта'],['Sigma','Σ','Большая сигма'],['Omega','Ω','Большая омега']]],
+    ['Ссылки',[['ref{1}','[1]','Ссылка на блок']]]
+  ];
+  function renderPalette(filter=''){
+    const host=$('#paletteList'),q=filter.trim().toLowerCase();let html='',count=0;
+    for(const [title,items] of paletteGroups){
+      const found=items.filter(item=>!q||item.join(' ').toLowerCase().includes(q));if(!found.length)continue;count+=found.length;
+      html+='<section class="palette-section"><h3>'+escapeHTML(title)+'</h3><div class="palette-grid">'+found.map(([value,label,desc])=>{
+        const preview=value==='mat[[a,b],[c,d]]'
+          ?'<span class="palette-matrix"><span>a</span><span>b</span><span>c</span><span>d</span></span>'
+          :'<span class="palette-symbol">'+escapeHTML(label)+'</span>';
+        return '<button class="palette-item" data-palette-template="'+escapeHTML(value)+'" title="'+escapeHTML(desc||label)+'"><span class="palette-preview">'+preview+'</span><span class="palette-label">'+escapeHTML(desc||label)+'</span></button>';
+      }).join('')+'</div></section>';
+    }
+    host.innerHTML=count?html:'<div class="palette-empty">Ничего не найдено</div>';
+    host.querySelectorAll('[data-palette-template]').forEach(btn=>{
+      btn.addEventListener('pointerdown',ev=>ev.preventDefault());
+      btn.addEventListener('click',()=>insertTemplate(btn.dataset.paletteTemplate));
+    });
+  }
+  function insertAtEditor(template){
+    const area=nodesLayer.querySelector('.math-editor');if(!area)return false;
+    const start=area.selectionStart??area.value.length,end=area.selectionEnd??start;
+    area.setRangeText(template,start,end,'end');area.focus();
+    area.dispatchEvent(new Event('input',{bubbles:true}));return true;
+  }
+  function insertTemplate(template) {
+    if(state.editing!==null&&insertAtEditor(template))return;
+    let node=state.nodes.find(n=>n.id===state.selected);
+    if(!node){
+      const p=screenToWorld(viewport.getBoundingClientRect().left+viewport.clientWidth/2,viewport.getBoundingClientRect().top+viewport.clientHeight/2);
+      const id=createNode(p.x-195,p.y-55,template,true);renderPalette($('#paletteSearch').value);return id;
+    }
+    beginEdit(node.id);
+    requestAnimationFrame(()=>insertAtEditor(template));
+  }
+
+  function fitAll() {
+    if(!state.nodes.length){state.zoom=1;state.panX=viewport.clientWidth/2-WORLD_SIZE/2;state.panY=viewport.clientHeight/2-WORLD_SIZE/2;setTransform();return;}
+    const rects=state.nodes.map(n=>{const el=nodesLayer.querySelector(`[data-node-id="${n.id}"].node`);return {x:n.x,y:n.y,w:el?.offsetWidth||320,h:el?.offsetHeight||110};});
+    const minX=Math.min(...rects.map(r=>r.x)),minY=Math.min(...rects.map(r=>r.y));
+    const maxX=Math.max(...rects.map(r=>r.x+r.w)),maxY=Math.max(...rects.map(r=>r.y+r.h));
+    const pad=90,scale=clamp(Math.min((viewport.clientWidth-pad*2)/(maxX-minX||1),(viewport.clientHeight-pad*2)/(maxY-minY||1)),.25,1.5);
+    state.zoom=scale;state.panX=(viewport.clientWidth-(maxX-minX)*scale)/2-minX*scale;
+    state.panY=(viewport.clientHeight-(maxY-minY)*scale)/2-minY*scale;setTransform();scheduleSave();
+  }
+  function cycleEdge(from,to) {
+    if(from===to)return;
+    const existing=state.edges.find(e=>e.from===from&&e.to===to);
+    if(existing){showToast('Такая связь уже существует');return;}
+    state.edges.push({id:state.nextEdgeId++,from,to,type:'sufficient'});state.selectedEdge=null;
+    renderEdges();updateStatus();refreshCode();scheduleSave();
+  }
+  function expressionsOf(node) { return nodeParts(node); }
+  function refsOf(node) {
+    const refs=[];
+    for(const expression of expressionsOf(node)) for(const match of expression.matchAll(/ref\{(\d+)\}/g)) refs.push(Number(match[1]));
+    return [...new Set(refs)];
+  }
+  function orderForMerge(nodes) {
+    const ids=new Set(nodes.map(n=>n.id)),indegree=new Map(nodes.map(n=>[n.id,0])),adj=new Map(nodes.map(n=>[n.id,[]]));
+    const add=(from,to)=>{if(from===to||!ids.has(from)||!ids.has(to)||adj.get(from).includes(to))return;adj.get(from).push(to);indegree.set(to,indegree.get(to)+1);};
+    for(const edge of state.edges){if(edge.type==='necessary')add(edge.to,edge.from);else add(edge.from,edge.to);}
+    for(const node of nodes) for(const ref of refsOf(node)){const target=findNodeForReference(ref);if(target)add(target.id,node.id);}
+    const byPosition=(a,b)=>{const A=nodes.find(n=>n.id===a),B=nodes.find(n=>n.id===b);return A.y-B.y||A.x-B.x||a-b;};
+    const ready=[...indegree].filter(([,v])=>v===0).map(([id])=>id).sort(byPosition),ordered=[];
+    while(ready.length){const id=ready.shift();ordered.push(id);for(const next of adj.get(id)){indegree.set(next,indegree.get(next)-1);if(indegree.get(next)===0){ready.push(next);ready.sort(byPosition);}}}
+    const cyclic=[...ids].filter(id=>!ordered.includes(id)).sort(byPosition);
+    return [...ordered,...cyclic].map(id=>nodes.find(n=>n.id===id));
+  }
+  function mergeSelectedNodes() {
+    if(state.selection.length<2)return;
+    const selectedIds=new Set(state.selection),selectedNodes=state.nodes.filter(n=>selectedIds.has(n.id));
+    if(selectedNodes.length<2)return;
+    const ordered=orderForMerge(selectedNodes),mergedId=Math.min(...selectedIds);
+    const mergedParts=ordered.flatMap(node=>expressionsOf(node));
+    const aliases=[...new Set(ordered.flatMap(node=>[node.id,...(node.aliases||[])]))].filter(id=>id!==mergedId);
+    const minX=Math.min(...ordered.map(n=>n.x)),minY=Math.min(...ordered.map(n=>n.y));
+    const merged={id:mergedId,x:minX,y:minY,expr:mergedParts[0]||'',parts:mergedParts.length>1?mergedParts:[],aliases};
+    // References from unselected blocks now point to the surviving composite node.
+    for(const node of state.nodes){
+      if(selectedIds.has(node.id))continue;
+      const updated=expressionsOf(node).map(expression=>expression.replace(/ref\{(\d+)\}/g,(full,raw)=>selectedIds.has(Number(raw))||aliases.includes(Number(raw))?`ref{${mergedId}}`:full));
+      node.expr=updated[0]||'';node.parts=updated.length>1?updated:[];
+    }
+    // Collapse edges between selected nodes and redirect every external edge.
+    const remapped=[];const seen=new Set();
+    for(const edge of state.edges){
+      const from=selectedIds.has(edge.from)?mergedId:edge.from;
+      const to=selectedIds.has(edge.to)?mergedId:edge.to;
+      if(from===to)continue;
+      const key=`${from}:${to}:${edge.type}`;if(seen.has(key))continue;seen.add(key);
+      remapped.push({...edge,from,to});
+    }
+    const firstIndex=Math.min(...state.nodes.map((n,i)=>selectedIds.has(n.id)?i:Infinity));
+    const remaining=state.nodes.filter(n=>!selectedIds.has(n.id));
+    remaining.splice(Math.min(firstIndex,remaining.length),0,merged);
+    state.nodes=remaining;state.edges=remapped;state.selection=[mergedId];state.selected=mergedId;state.editing=null;
+    renderAll();scheduleSave();showToast(`Объединено в один составной шаг · ${mergedParts.length} ${pluralRu(mergedParts.length,'строка','строки','строк')}`);
+  }
+
+  function onPointerMove(ev) {
+    if(state.dragging) {
+      const p=screenToWorld(ev.clientX,ev.clientY);
+      for(const offset of state.dragging.offsets){const node=state.nodes.find(n=>n.id===offset.id);if(node){node.x=p.x-offset.dx;node.y=p.y-offset.dy;const el=nodesLayer.querySelector(`[data-node-id="${node.id}"].node`);if(el){el.style.left=node.x+'px';el.style.top=node.y+'px';}}}
+      renderEdges();positionObjectDrawer();
+    } else if(state.panning) {
+      state.panX=state.panning.panX+(ev.clientX-state.panning.x);state.panY=state.panning.panY+(ev.clientY-state.panning.y);setTransform();
+    } else if(state.connecting) {
+      const p=screenToWorld(ev.clientX,ev.clientY),a=nodeAnchor(state.connecting.from,'out');
+      if(a){const dx=Math.max(55,Math.abs(p.x-a.x)*.42);tempEdge.setAttribute('d',`M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${p.x-dx} ${p.y}, ${p.x} ${p.y}`);tempEdge.style.display='block';}
+    }
+    positionObjectDrawer();
+  }
+  function onPointerUp(ev) {
+    if(state.dragging){state.dragging=null;renderEdges();scheduleSave();}
+    if(state.panning){state.panning=null;viewport.classList.remove('panning');scheduleSave();}
+    if(state.connecting) {
+      const port=ev.target.closest?.('.port');
+      if(port){const to=Number(port.dataset.nodeId);cycleEdge(state.connecting.from,to);}
+      state.connecting=null;tempEdge.style.display='none';nodesLayer.querySelectorAll('.port').forEach(p=>p.classList.remove('connecting'));
+    }
+  }
+  viewport.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    if(ev.target.closest('.node'))return;
+    if(ev.target.closest('#edgeLayer')){if(ev.target.classList.contains('edge-hit')||ev.target.classList.contains('edge-path')||ev.target.closest('.edge-label'))return;}
+    state.selected=null;state.selection=[];state.selectedEdge=null;nodesLayer.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'));updateSelectionUI();
+    if(state.spaceDown||ev.target===viewport||ev.target===world||ev.target===nodesLayer||ev.target===$('#edgeLayer')) {
+      state.panning={x:ev.clientX,y:ev.clientY,panX:state.panX,panY:state.panY};viewport.classList.add('panning');
+    }
+  });
+  viewport.addEventListener('dblclick',ev=>{
+    if(ev.target.closest('.node')||ev.target.closest('.edge-label'))return;
+    const p=screenToWorld(ev.clientX,ev.clientY);createNode(p.x-160,p.y-55,'',true);
+  });
+  window.addEventListener('pointermove',onPointerMove);
+  window.addEventListener('pointerup',onPointerUp);
+  viewport.addEventListener('wheel',ev=>{
+    ev.preventDefault();const rect=viewport.getBoundingClientRect();const mx=ev.clientX-rect.left,my=ev.clientY-rect.top;
+    const before={x:(mx-state.panX)/state.zoom,y:(my-state.panY)/state.zoom};
+    state.zoom=clamp(state.zoom*(ev.deltaY<0?1.1:.9),.25,2.5);
+    state.panX=mx-before.x*state.zoom;state.panY=my-before.y*state.zoom;setTransform();scheduleSave();
+  },{passive:false});
+  window.addEventListener('keydown',ev=>{
+    if(ev.code==='Space'&&!ev.repeat&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){state.spaceDown=true;viewport.classList.add('panning');ev.preventDefault();}
+    if((ev.key==='Delete'||ev.key==='Backspace')&&state.selection.length&&!state.editing&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){deleteSelection();}
+    if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='j'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){ev.preventDefault();mergeSelectedNodes();}
+    if(ev.key==='Escape'&&state.editing){state.editing=null;closeObjectDrawer();renderNodes();}
+    else if(ev.key==='Escape'&&!state.editing){state.selection=[];state.selected=null;renderNodes();}
+    if((ev.key==='n'||ev.key==='N')&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){createNodeNearCenter();}
+  });
+  window.addEventListener('keyup',ev=>{if(ev.code==='Space'){state.spaceDown=false;if(!state.panning)viewport.classList.remove('panning');}});
+  window.addEventListener('blur',()=>{state.spaceDown=false;if(!state.panning)viewport.classList.remove('panning');});
+
+  function topologicalOrder() {
+    const map=new Map(state.nodes.map(n=>[n.id,n]));const indegree=new Map(state.nodes.map(n=>[n.id,0]));const adj=new Map(state.nodes.map(n=>[n.id,[]]));
+    const add=(a,b)=>{if(!map.has(a)||!map.has(b)||a===b)return;adj.get(a).push(b);indegree.set(b,indegree.get(b)+1);};
+    for(const e of state.edges){if(e.type==='necessary')add(e.to,e.from);else add(e.from,e.to);}
+    for(const node of state.nodes){for(const ref of refsOf(node)){const target=findNodeForReference(ref);if(target&&target.id!==node.id)add(target.id,node.id);}}
+    const sort=(a,b)=>{const A=map.get(a),B=map.get(b);return A.y-B.y||A.x-B.x||a-b;};
+    let ready=[...indegree].filter(([,v])=>v===0).map(([id])=>id).sort(sort),out=[];
+    while(ready.length){const id=ready.shift();out.push(id);for(const next of adj.get(id)){indegree.set(next,indegree.get(next)-1);if(indegree.get(next)===0){ready.push(next);ready.sort(sort);}}}
+    const cyclic=[...map.keys()].filter(id=>!out.includes(id)).sort(sort);
+    return {order:[...out,...cyclic],cyclic};
+  }
+  function cleanComment(s){return String(s).replace(/\*\//g,'* /').replace(/[\r\n]+/g,' ');}
+  function makeLean() {
+    const {order,cyclic}=topologicalOrder();
+    if(!order.length)return '-- Пустая математическая доска.\n';
+    const lines=['/- Автоматически созданный каркас.','   Формулы приведены в комментариях и не переведены в термы Lean.','   Генератор не проверяет корректность математического вывода. -/','','theorem mathematical_board : True ↔ True := by'];
+    order.forEach((id,index)=>{
+      const n=state.nodes.find(x=>x.id===id);const expressions=expressionsOf(n);const refs=refsOf(n).map(String);
+      expressions.forEach((expression,partIndex)=>lines.push(`  -- [${id}]${expressions.length>1?' / шаг '+(partIndex+1):''} ${cleanComment(expression)}`));
+      const usable=refs.filter(r=>order.indexOf(Number(r))<index);
+      if(usable.length)lines.push(`  -- Используемые предыдущие блоки: ${usable.map(r=>'h'+r).join(', ')}`);
+      const related=state.edges.filter(e=>e.from===id||e.to===id).map(e=>{
+        const other=e.from===id?e.to:e.from;return `${e.type==='sufficient'?'достаточно':e.type==='necessary'?'необходимо':'эквивалентно'} [${other}]`;
+      });
+      if(related.length)lines.push(`  -- Связи: ${related.join('; ')}`);
+      lines.push(`  have h${id} : True := by`);
+      lines.push('    trivial');
+    });
+    if(cyclic.length)lines.push(`  -- ВНИМАНИЕ: цикл зависимостей затрагивает блоки ${cyclic.map(id=>'['+id+']').join(', ')}.`);
+    lines.push('  calc');
+    lines.push('    True ↔ True := by');
+    lines.push('      constructor');
+    lines.push('      · intro _');
+    lines.push(`        exact h${order[order.length-1]}`);
+    lines.push('      · intro _');
+    lines.push('        trivial');
+    return lines.join('\n');
+  }
+  function makePseudo() {
+    const {order,cyclic}=topologicalOrder();
+    if(!order.length)return 'Доска пуста.';
+    const lines=['ВЫВОД: МАТЕМАТИЧЕСКАЯ ДОСКА','Порядок построен по направленным связям и ссылкам внутри блоков.',''];
+    order.forEach((id,i)=>{
+      const n=state.nodes.find(x=>x.id===id),expressions=expressionsOf(n);
+      if(expressions.length>1){lines.push(`${i+1}. [${id}] Составной шаг:`);expressions.forEach((expression,j)=>lines.push(`   ${i+1}.${j+1} ${expression}`));}
+      else lines.push(`${i+1}. [${id}] ${expressions[0]}`);
+      const refs=refsOf(n);
+      if(refs.length)lines.push(`   Использует утверждения: ${refs.map(r=>'['+r+']').join(', ')}`);
+      state.edges.filter(e=>e.from===id||e.to===id).forEach(e=>{
+        const other=e.from===id?e.to:e.from;const relation=e.type==='sufficient'?'достаточно для':e.type==='necessary'?'необходимо для':'эквивалентно';
+        lines.push(`   Связь: ${relation} [${other}]`);
+      });
+    });
+    if(cyclic.length)lines.push('',`ПРЕДУПРЕЖДЕНИЕ: цикл зависимостей — ${cyclic.map(id=>'['+id+']').join(', ')}.`);
+    return lines.join('\n');
+  }
+  function refreshCode() {
+    if(!codeOutput)return;
+    codeOutput.value=state.codeMode==='lean'?makeLean():makePseudo();
+    $('#downloadCodeBtn').textContent=state.codeMode==='lean'?'Скачать .lean':'Скачать .txt';
+    codeNote.textContent=state.codeMode==='lean'
+      ?'Формулы и строки составных блоков выводятся комментариями. True — техническая заглушка; доказательство не формализуется и не компилируется.'
+      :'Порядок учитывает направления связей, обратный порядок для «необходимо» и ссылки ref{…}. Циклы отмечаются отдельно.';
+  }
+  function downloadFile(filename,text,mime) {
+    const blob=new Blob([text],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }
+
+  $('#mergeBtn').addEventListener('click',mergeSelectedNodes);
+  $('#addNodeBtn').addEventListener('click',createNodeNearCenter);
+  $('#fitBtn').addEventListener('click',fitAll);
+  $('#toggleCodeBtn').addEventListener('click',()=>{codePanel.classList.toggle('hidden');$('#toggleCodeBtn').textContent=codePanel.classList.contains('hidden')?'Показать код':'Скрыть код';refreshCode();});
+  $('#closeCodeBtn').addEventListener('click',()=>{codePanel.classList.add('hidden');$('#toggleCodeBtn').textContent='Показать код';});
+  document.querySelectorAll('[data-template]').forEach(btn=>{btn.addEventListener('pointerdown',ev=>ev.preventDefault());btn.addEventListener('click',()=>insertTemplate(btn.dataset.template));});
+  $('#closeDrawerBtn').addEventListener('click',()=>{const id=state.editing,area=nodesLayer.querySelector('.math-editor');if(id!==null&&area)commitEdit(id,area.value);else closeObjectDrawer();});
+  $('#objectDrawer').addEventListener('focusout',()=>setTimeout(()=>{const id=state.editing,area=nodesLayer.querySelector('.math-editor');if(id!==null&&area&&!$('#objectDrawer').contains(document.activeElement)&&document.activeElement!==area)commitEdit(id,area.value);},0));
+  $('#paletteSearch').addEventListener('input',ev=>renderPalette(ev.target.value));
+  renderPalette();
+  document.querySelectorAll('[data-code-mode]').forEach(btn=>btn.addEventListener('click',()=>{
+    state.codeMode=btn.dataset.codeMode;document.querySelectorAll('[data-code-mode]').forEach(b=>b.classList.toggle('active',b===btn));refreshCode();
+  }));
+  $('#copyCodeBtn').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(codeOutput.value);showToast('Код скопирован');}
+    catch(e){codeOutput.focus();codeOutput.select();try{document.execCommand('copy');showToast('Код скопирован');}catch(_){showToast('Не удалось скопировать');}}
+  });
+  $('#downloadCodeBtn').addEventListener('click',()=>{
+    const lean=state.codeMode==='lean';downloadFile(lean?'mathematical_board.lean':'mathematical_board.txt',codeOutput.value,lean?'text/plain':'text/plain;charset=utf-8');
+  });
+  $('#exportJsonBtn').addEventListener('click',()=>downloadFile('mathematical-board.json',JSON.stringify(serializeBoard(),null,2),'application/json'));
+  $('#importJsonBtn').addEventListener('click',()=>$('#importFile').click());
+  $('#importFile').addEventListener('change',async ev=>{
+    const file=ev.target.files?.[0];if(!file)return;
+    try{const data=JSON.parse(await file.text());loadBoard(data);showToast('Доска импортирована');}
+    catch(err){showToast('Ошибка импорта: '+err.message);}
+    ev.target.value='';
+  });
+  window.addEventListener('beforeunload',()=>{
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(serializeBoard()));}catch(e){}
+  });
+
+  function initialize() {
+    let restored=false;
+    try{const saved=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(LEGACY_STORAGE_KEY);if(saved){loadBoard(JSON.parse(saved));restored=true;}}
+    catch(e){console.warn('Не удалось восстановить доску:',e);}
+    if(!restored){state.panX=viewport.clientWidth/2-WORLD_SIZE/2;state.panY=viewport.clientHeight/2-WORLD_SIZE/2;renderAll();setTransform();}
+    refreshCode();updateStatus();
+  }
+  initialize();
+  window.addEventListener('resize',()=>{if(!state.nodes.length){state.panX=viewport.clientWidth/2-WORLD_SIZE/2;state.panY=viewport.clientHeight/2-WORLD_SIZE/2;setTransform();}else positionObjectDrawer();});
+})();
+</script>
+</body>
+</html>
